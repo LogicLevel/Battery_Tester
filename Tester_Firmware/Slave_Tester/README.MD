@@ -5,13 +5,16 @@
 | :-----------: | :-----------: | :-----------: | :-----------: |
 | (  Address  ) | ( Operation ) | (  Payload  ) | (  Payload  ) |
 
-Address: slave address of this device
-Operations: op_code table 
-  {0,1,2,3,4,5,6,7} 
+Address: slave address of this device  
+
+Operations: op_code table  
+
+   {0,1,2,3,4,5,6,7}  
+   
       Bit 0: dictates a read (0) or write (1) operation will be performed
-        - Write operations can only be performed on master settable fields:
+        * Write operations can only be performed on master settable fields:
           discharge_current, cutoff_voltage, rest_time
-        - Read operations can be performed on all master accessible fields:
+        * Read operations can be performed on all master accessible fields:
           discharge_current, cutoff_voltage, rest_time, battery_voltage,
           charge_current, EC_flag, ED_flag, charge_mAh, discharge_mAh
           
