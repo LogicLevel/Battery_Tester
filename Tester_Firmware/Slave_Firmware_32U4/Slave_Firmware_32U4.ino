@@ -1,22 +1,45 @@
 #include <Wire.h>
-#include "LTC4150.h"
+#include "NTC_LUT.h"
+//#include "LTC4150.h"
 
-LTC4150 CoulombCounter(1, 1, 1, 1);
-// LTC4150::LTC4150(int int_pin, int clr, int pol, int interupt);
+//LTC4150 CoulombCount;
+//LTC4150(int_pin, clr, pol, interupt);
+//BatteryManagement(int vbat_pin, int vref_pin, int ref_voltage, int pin, int clr, int pol, int interupt
 
-const int vbat_read = 0; // battery voltage pin
+
+const int pin_int = 3; // change back to 7 for pro micro 
+const int pin_clr = 8;
+const int pin_pol = 9;
+const int heater_ctl = 5; 
+const int pin_battery = 0;
+const int pin_ntc = 1;
+
+//private constatnts
+int discharge_current = 0;      // mA
+const int ntc_resistance = 10000; 
+const int ntc_R2 = 10000;           // Second resistor in divider
+
+volatile double current; 
+
+double ah_quanta = 0.34135518; // mAh for each INT 50mOhm sense
+volatile boolean isrflag;
+volatile long int time, lasttime;
+
+volatile double charge_mAh = 0;
+volatile double discharge_mAh = 0;
 
 //slave setup
 #define SLAVE_ADDRESS 8
 
 // master setable fields ( all setable payloads are 2 bytes max )
-int discharge_current = 0;      // mA
-int cutoff_voltage = 0;         // mV
+int charge_term_voltage = 4100; // mv 
+int cutoff_voltage = 3200;      // mV
 long rest_time = 0;             // ms
+int cell_temp = 20;             // temperature in C 
 byte op_code = 0;               // first byte of any I2C frame sent by master
                                 //   dictates data contense and operation
 
-byte tx[2] = {0,0};
+byte tx[2] = {0,0};             // used to store data bytes to be transmited
 
 // read only fields of methods ( max readable payload is 2 bytes )
 int battery_voltage = 0;        // mV
@@ -24,9 +47,13 @@ int charge_current = 0;         // mA
 int EC_flag = 0;                // end of charge flag (set high at end of charge)
 int ED_flag = 0;                // end of discharge flag (set high at end of discharge)
 
+// private fields
+long finish_time = 0;           // ms
+int charge_term_current = 50;   // mA
+
 
 // internal state variables 
-byte tester_state = 0;
+byte state = 0;
 /* State:
  *  0: Charge
  *  1: Discharge
@@ -34,22 +61,31 @@ byte tester_state = 0;
  *  3: Idle
  */
 
-#define S0 B00000000
-#define S1 B00000001
-#define S2 B00000010
-#define S3 B00000100
-#define S4 B00001000
-#define S5 B00010000
+#define S0 0
+#define S1 1
+#define S2 2
+#define S3 3
+#define S4 4
+#define S5 5
+#define S6 6
+#define S7 7
 
 
 void setup() {
-  attachInterrupt(CoulombCounter.interupt_number, CC_ISR, FALLING);
+  pinMode(pin_int, INPUT);
+  pinMode(pin_clr, INPUT);
+  pinMode(pin_pol, INPUT);
+  pinMode(heater_ctl, OUTPUT);
+  
+  attachInterrupt(1, CoulombCount_ISR, FALLING);
 
   // Setup for I2C comunications
   Wire.begin(SLAVE_ADDRESS); // fill in address 
   Wire.onRequest(requestEvent);
   Wire.onReceive(receiveEvent);
-  Serial.begin(9600);
+  Serial.begin(115200);
+
+  pinMode(6, OUTPUT);
 
   // *********** Setting Test Values for test case:  test_reading_values() ********** /
   discharge_current = 1100;   // mA
@@ -59,26 +95,107 @@ void setup() {
                               //   dictates data contense and operation
   battery_voltage = 3808;     // mV
   charge_current = 900;       // mA
+  delay(1000);
+  Serial.println("Setup Complete");
+  Serial.println("Waiting 10 seconds");
+  delay(10000);
+  Serial.println("Starting Now");
+  Serial.println();
+  read_battery_voltage();
+  //int heater_val = 250;
+  while (battery_voltage > cutoff_voltage)
+  {
+     
+     analogWrite(heater_ctl, 255);
+     printOut(); 
+     read_battery_voltage();
+     analogWrite(6, 80);
+     delay(1000); 
+     /*heater_val = heater_val - 10;
+     if (heater_val < 0)
+        heater_val = 250;
+        */
+     
+  }
+  analogWrite(6, 0);
+  Serial.println();
+  Serial.println("Finished!!!");
 }
 
 void loop() {
-  switch(tester_state) { 
+  switch(state) { 
     case S0 :
-
+      // wait for run method to be called
     break; 
 
-    case S1 :
-
+    case S1 : // Charge Time Hold
+      if ( (finish_time + rest_time) < millis() ) {
+        state = S2; 
+      }
     break; 
 
     case S2 :
-
+      // setup discharge
+      state = S3;
     break; 
 
     case S3 :
+      // Discharge
+      if (battery_voltage < cutoff_voltage) {
+        state = S4;
+        EC_flag = 1;
+      }
+    break; 
+    
+    case S4 : // Discharge Time Hold
+    
+      delay(rest_time);
+      state = S5; 
+      
+    break; 
+    
+    case S5 :
+      // setup Charge
+      state = S6;
+    break; 
 
+    case S6 : // Charge
+    
+      if ( (current < charge_term_current) && (battery_voltage < charge_term_voltage) ){ // if fully charged 
+        state = S7; 
+        EC_flag = 1;
+      }
+      
+      
+    break; 
+
+    case S7 :
+      // System Teardown
+
+      finish_time = millis(); 
+      state = S0;
     break; 
   }
+
+  //update variables
+  read_battery_voltage();
+  // update current and voltage
+}
+
+void printOut(){
+  Serial.println();
+  Serial.print("Battery Voltage: "); 
+  Serial.println(battery_voltage);
+
+  Serial.print("Charge mAh: "); 
+  Serial.println(charge_mAh);
+
+  Serial.print("Discharge mAh: "); 
+  Serial.println(discharge_mAh);
+
+  Serial.print("Current: "); 
+  Serial.println(current);
+  
 }
 
 /* ---------- Helper Methods ---------- */ 
@@ -124,12 +241,12 @@ void requestEvent(){
       break;
 
       case B00000111: // transmit charge_mAh
-        int_to_byte( (int)CoulombCounter.charge_mAh );
+        int_to_byte( (int)charge_mAh );
         Wire.write(tx, 2);
       break;
 
       case B00001000: // transmit discharge_mAh
-        int_to_byte( (int)CoulombCounter.discharge_mAh );
+        int_to_byte( (int)discharge_mAh );
         Wire.write(tx, 2);
       break;
 
@@ -149,11 +266,11 @@ void requestEvent(){
  *      Bit 0: dictates a read (0) or write (1) operation will be performed
  *        - Write operations can only be performed on master setable fields:
  *          discharge_current, cutoff_voltage, rest_time
- *        - Read operations can be performed on all master accessible fields:
+ *        - Read operations can be performed on all master aCoulombCountessible fields:
  *          discharge_current, cutoff_voltage, rest_time, battery_voltage, 
  *          charge_current, EC_flag, ED_flag, charge_mAh, discharge_mAh
  *          
- *      Bits {4,5,6,7}: dictate the field accessed by the operation
+ *      Bits {4,5,6,7}: dictate the field aCoulombCountessed by the operation
  *          - {x,0,0,0,0,0,0,0} discharge_current ( if write operation following 2 bits are value )
  *          - {x,0,0,0,0,0,0,1} cutoff_voltage    ( if write operation following 2 bits are value )
  *          - {x,0,0,0,0,0,1,0} rest_time         ( if write operation following 2 bits are value )
@@ -181,7 +298,7 @@ void receiveEvent(int bytesReceived){
   // Only do anything for op_codes that require a value to be set or a method called
   switch (op_code){
     case B10000000: 
-      discharge_current = int_recieved; // write value to discharge_current
+      //discharge_current = int_recieved; // write value to discharge_current
     break; 
        
     case B10000001:
@@ -207,24 +324,27 @@ void receiveEvent(int bytesReceived){
 }
 
 void read_battery_voltage(){
-  int temp = analogRead(vbat_read); 
-  battery_voltage = temp * (5000.0 / 1023);
+  int temp = analogRead(pin_battery); 
+  battery_voltage = (int) (temp * (4.88758553));
+}
+
+int get_temperature(){
+  int temp = analogRead(pin_ntc); 
   
 }
 
 // resets charge_mAh, discharge_mAh, EC_flag, ED_flag, sets state to Idle
 void reset(){
   Serial.println("reseting program"); 
-  CoulombCounter.charge_mAh = 0;
-  CoulombCounter.discharge_mAh = 0;
+  charge_mAh = 0;
+  discharge_mAh = 0;
   EC_flag = 0;
   ED_flag = 0;
-  tester_state = 3;
+  state = 3;
 }
-
 // starts test by changing state to charge;
 void run_cycle(){
-  tester_state = 1; 
+  state = 1; 
 }
 
 void int_to_byte(int input) {
@@ -232,11 +352,34 @@ void int_to_byte(int input) {
   tx[1] = input;
 }
 
+void CoulombCount_ISR() { // Run automatically for falling edge on D3 (INT1)
 
+  lasttime = time;
+  time = micros();
 
-void CC_ISR() 
-{
-  CoulombCounter.myISR();
+  if (digitalRead(pin_pol)) // high = charging
+  {
+    charge_mAh += ah_quanta;
+  }
+  else // low = discharging
+  {
+    discharge_mAh += ah_quanta;
+  }
+
+  // Calculate mA from time delay (optional)
+  // current = 614.4/((time-lasttime)/1000000.0);
+  current = 1228.8/((time-lasttime)/1000000.0);
+  
+  isrflag = true;
 }
+
+void setup_fast_PWM(){
+
+
+  
+}
+
+
+
 
 
