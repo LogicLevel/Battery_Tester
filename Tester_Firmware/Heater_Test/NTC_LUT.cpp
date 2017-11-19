@@ -19,10 +19,7 @@ void NTC_LUT::NTC_LUT_setup(int pin, int r2){
 int NTC_LUT::get_temp() {
   int temp = analogRead(pin_ADC); 
   int res = (int) ( (resistor2 / (ADC_Res - temp)) * temp );     // (Careful not to overflow the int value)
-  /*
-  Serial.print("Resistance Measured");
-  Serial.println(res);
-  */
+  
   int i = 0;
   while(res < resistance[i])      // while the NTC resistance is less than the table of resistance[index]
     i = i + 1;

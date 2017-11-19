@@ -45,13 +45,12 @@ Thermal_Controller::Thermal_Controller(int pNTC, int pPWM, int r2)
   //target_ADC_value = temperature_LUT.temperature_to_ADC(target_temperature);
   //target_ADC_value = 1023 - 377; 
 
-  // if temperature is more than 4 degrees below or above setpoint, OUTPUT will be set to min or max respectively
-  myPID.setBangBang(30); 
+  // if temperature is more or thes than 30 ADC counts from target_ADC_value, OUTPUT will be set to min or max respectively
+  myPID.setBangBang(30);
   
   // set PID update interval to 4000ms
   myPID.setTimeStep(1000);
 
-  
 }
 
 int Thermal_Controller::get_temp(){         // This is a pass through from NTC_LUT
@@ -92,13 +91,7 @@ void Thermal_Controller::compute() // Computes PID loop and measures temperature
     }
     
     myPID.run();
-    
-    /*
-    Serial.print("PID IS RUNNING: ");
-    Serial.println(myPID.isStopped());
-    Serial.print("PID IS at setpoint: ");
-    Serial.println(myPID.atSetPoint(2));
-    */
+
     analogWrite(pin_PWM, PWM_value);
   } else {
     analogWrite(pin_PWM, 0);
