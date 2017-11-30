@@ -1,8 +1,9 @@
 
 // CLR and SHDN.)
-#define INT 3 // On 328 Arduinos, only pins 2 and 3 support interrupts
-#define POL 4 // Polarity signal
-#define CLR 6 // Unneeded in this sketch, set to input (hi-Z)
+#define INT 7 // On 328 Arduinos, only pins 2 and 3 support interrupts
+#define POL 9 // Polarity signal
+#define CLR 8 // Unneeded in this sketch, set to input (hi-Z)
+#define PIN_DISCHARGE_CTL 6 
 
 // Change the following two lines to match your battery
 // and its initial state-of-charge:
@@ -24,24 +25,28 @@ void setup()
 
   pinMode(CLR,INPUT); // Unneeded, disabled by setting to input
 
+  pinMode(PIN_DISCHARGE_CTL, OUTPUT);
+
+  analogWrite(PIN_DISCHARGE_CTL, 20); 
+
   // Enable serial output:
 
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("LTC4150 Coulomb Counter BOB interrupt example");
 
   // One INT is this many percent of battery capacity:
   
-  percent_quanta = 1.0/(battery_mAh/1000.0*5859.0/100.0);
+  //percent_quanta = 1.0/(battery_mAh/1000.0*5859.0/100.0);
 
   // Enable active-low interrupts on D3 (INT1) to function myISR().
   // On 328 Arduinos, you may also use D2 (INT0), change '1' to '0'. 
 
   isrflag = false;
-  attachInterrupt(1,myISR,FALLING);
+  attachInterrupt(4,myISR,FALLING);
 }
 
 void loop()
-{
+{ 
   analogWrite(6, 10);
   static int n = 0;
 
@@ -58,9 +63,9 @@ void loop()
     // Print out current status (variables set by myISR())
 
     Serial.print("mAh: ");
-    Serial.print(battery_mAh);
-    Serial.print(" soc: ");
-    Serial.print(battery_percent);
+    Serial.print(mA);
+    //Serial.print(" soc: ");
+    //Serial.print(battery_percent);
     Serial.print("% time: ");
     Serial.print((time-lasttime)/1000000.0);
     Serial.print("s mA: ");
@@ -80,11 +85,11 @@ void myISR() // Run automatically for falling edge on D3 (INT1)
 
   if (digitalRead(POL)) // high = charging
   {
-    charge_mAh += ah_quanta;
+    mA += ah_quanta;
   }
   else // low = discharging
   {
-    discharge_mAh -= ah_quanta;
+    mA -= ah_quanta;
   }
 
   // Calculate mA from time delay (optional)

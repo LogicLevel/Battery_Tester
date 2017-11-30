@@ -10,12 +10,11 @@ class Thermal_Controller
   public:
      
     // Constructor
-    Thermal_Controller(int pNTC, int pPWM, int r2);
+    Thermal_Controller(int pNTC, int pPWM, int *r2, int *tSet, int *tMeas);
     
     // Methods
     void debug_print();
     int get_temp();                 // This is a pass through from NTC_LUT
-    int set_temp(int t);            // Sets temperature
     double PWM_value;               // Non-private for debugging purposes
 
     void compute();                 // Computes PID loop 
@@ -23,8 +22,9 @@ class Thermal_Controller
 
   private:
     // Fields
-    int current_temperature;        // Current temperature in C
-    int target_temperature;         // Target temperature in C
+    int *resistor2;
+    int *current_temperature;        // Current temperature in C
+    int *target_temperature;         // Target temperature in C
     double ADC_value;
     //double PWM_value;
     double target_ADC_value;        // ADC value of setpoint temperature 

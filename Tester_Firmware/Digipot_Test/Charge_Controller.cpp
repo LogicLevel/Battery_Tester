@@ -1,25 +1,22 @@
 #include "Charge_Controller.h"
 #include "Arduino.h"
 
-
 // Pin Values
-int PIN_CS;
-int PIN_UD;
-int PIN_CHRG_CTL;
-
-// Fields
-int step_val;
 
 // Constructor for constant current driver
 Charge_Controller::Charge_Controller(){
 
 }
 
-void Charge_Controller::controller_setup(int CS, int UD, int CHRG_CTL) {
+void Charge_Controller::setup(int CS, int UD, int CHRG_CTL,int *I_chrg, double *current, int *I_cut, int *stat) {
   // Store pin value 
   PIN_CS = CS;
   PIN_UD = UD; 
   PIN_CHRG_CTL = CHRG_CTL; 
+  charge_current = I_chrg;
+  measured_current = current; 
+  cutoff_current = I_cut;
+  charge_status = stat;
 
   // Configure pins for output and set default values
   
@@ -31,18 +28,10 @@ void Charge_Controller::controller_setup(int CS, int UD, int CHRG_CTL) {
   digitalWrite(PIN_UD, HIGH); 
   // MOSFET 
   pinMode(PIN_CHRG_CTL, OUTPUT);
-  digitalWrite(PIN_CHRG_CTL, LOW); 
+  digitalWrite(PIN_CHRG_CTL, HIGH); 
 
   // load the default value at startup
   step_val = STEP_LOADVAL; 
-}
-
-void enable(){
-  digitalWrite(PIN_CHRG_CTL, LOW); 
-}
-
-void disable(){
-  digitalWrite(PIN_CHRG_CTL, HIGH); 
 }
 
 void Charge_Controller::setCurrent(int c){
@@ -58,10 +47,39 @@ void Charge_Controller::setCurrent(int c){
   wiperSet(stp); 
 }
 
+void Charge_Controller::compute(){
+  // If the measured current
+  if (*charge_status == 1) { 
+    
+    // Recalculate charge current parameters
+    setCurrent(*charge_current);
+
+    // Check if cutoff current has been reached
+    if (*cutoff_current > *measured_current)
+      disable(); 
+      
+  }
+}
+
+void Charge_Controller::enable(){
+  // set status to charging
+  *charge_status = 1; 
+  
+  // Turn ON power to charge IC (logic is inverted (P-FET))
+  digitalWrite(PIN_CHRG_CTL, LOW);
+}
+
+void Charge_Controller::disable(){
+  // set status not charging
+  *charge_status = 0; 
+  
+  // Turn OFF power to charge IC (logic is inverted (P-FET))
+  digitalWrite(PIN_CHRG_CTL, HIGH);
+}
+
 //
 // Private methods used for up/down control of digipot
 //
-
 
 // Achives a target wiper position upsing the up/down comunications protocol
 void Charge_Controller::wiperSet(int stp){

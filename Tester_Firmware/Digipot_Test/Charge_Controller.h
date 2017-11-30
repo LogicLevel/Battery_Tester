@@ -32,12 +32,13 @@ class Charge_Controller {
     Charge_Controller();
   
     // Methods
-    void controller_setup(int CS, int UD, int CHRG_CTL); 
+    void setup(int CS, int UD, int CHRG_CTL,int *I_chrg, double *current, int *I_cut, int *stat); 
     void setCurrent(int c);     // input is in mA
-    void enable(); 
+    void enable();
     void disable();
+    void compute();
 
-  private:
+  //private:
     // Methods
     void down();
     void up();
@@ -50,6 +51,10 @@ class Charge_Controller {
 
     // Fields
     int step_val;
+    double *measured_current;
+    int *charge_current;
+    int *cutoff_current;
+    int *charge_status; // goes low when charging is complete
     
     const int I_MAX = 800; 
     const int I_MIN = 10;
